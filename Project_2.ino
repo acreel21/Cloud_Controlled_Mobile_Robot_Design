@@ -12,10 +12,16 @@
 #define motorRbac 10
 #define motorLfow 11
 #define motorLbac 12
-#define BUFSZ 90
+#define BUFSZ 1024
 
-int L = 9; //base length
-float r = 2.5; //radius of wheels
+typedef struct Robot{
+  double Velocity;
+  double Theta;
+  int Mode;
+} Robot;
+
+int L = 90; //base length
+float r = 30; //radius of wheels
 float c = 2*3.14*L; //circumference
 float phi = (2*c)/L; //angle
 float phiGlobal = 0; 
@@ -47,6 +53,7 @@ int pickup = 0;
 int Ml = 0; //left motor
 int Mr = 0; //right motor
 float theta = 0;
+Robot myRobot;
 
 IPAddress ip(192, 168, 1, 99); //set-up static ip address
 IPAddress gate(192, 168, 0, 1);
@@ -61,7 +68,6 @@ void setup() {
   // put your setup code here, to run once:
   wifiSetup(); //setup wifi
   openPort(); //UDP set-up
-  intiStruct(); //set-up struct
   pinSetup(); //configure pins and interrupts
   imuSetup();  //set-up IMU 
 }
@@ -70,8 +76,8 @@ void loop() {
   // put your main code here, to run repeatedly:
   checkImu(); //Updates IMU data 
   checkUDP(); //Updates UDP data
-  setSpe(Velocity); //Feedback for speed
-  setDir(Theta); //Feedback for theta
+  setSpe(myRobot.Velocity); //Feedback for speed
+  setDir(myRobot.Theta); //Feedback for theta
   if (pickup == 1){ //check if robot was pickup or not
     Ml = 0;
     Mr = 0;
@@ -86,6 +92,7 @@ void wifiSetup(){
   //Initialize serial and wait for port to open:
   Serial.begin(9600);
 
+  WiFi.config(ip, gate, sub);
   WiFi.begin(ssid, pass);
   ip2 = WiFi.localIP();
   Serial.print("IP Address: ");
@@ -95,14 +102,6 @@ void wifiSetup(){
 void openPort(){
   //UDP setup
   Udp.begin(localPort);
-}
-
-void intiStruct(){
-  typedef struct Robot{
-    double Velocity;
-    double Theta;
-    int Mode;
-  } Robot;
 }
 
 void pinSetup(){
@@ -208,6 +207,9 @@ void checkUDP(){
         if (len > 0) {
             Serial.println("Contents:");
             Serial.println(recvBuffer);
+            memcpy(&myRobot, recvBuffer, sizeof(myRobot));
+            Serial.println(myRobot.Velocity);
+            Serial.println(myRobot.Theta);
         }
         else {
             Serial.println("Read 0 bytes.");
