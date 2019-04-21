@@ -2,16 +2,15 @@
 #include <WiFi101.h>
 #include <WiFiUdp.h>
 #include <math.h>
+#include <LSM303.h>
 #include <Wire.h>
-#include "Adafruit_LSM303.h"
-#include "Adafruit_LSM303_U.h"
 #include "arduino_secrets.h"
 #define encoderR 5
 #define encoderL 6
 #define motorRfow 9
 #define motorRbac 10
-#define motorLfow 11
-#define motorLbac 12
+#define motorLfow 12
+#define motorLbac 11
 #define BUFSZ 1024
 
 typedef struct Robot{
@@ -22,8 +21,10 @@ typedef struct Robot{
 
 int L = 90; //base length
 float r = 30; //radius of wheels
-float c = 2*3.14*L; //circumference
-float phi = (2*c)/L; //angle
+float cl = 2*3.14*(L/2); //circumference
+float cr = 2*3.14*(r/2); //circumference
+float d = cr/(76*2);
+float phi = 90*(d/cl); //angle
 float phiGlobal = 0; 
 float xGlobal = 0; 
 float yGlobal = 0;
@@ -48,7 +49,7 @@ int w = 0;
 int errorDir = 0;
 int errorSpe = 0;
 int Kpspe = 4;
-int Kpdir = 4;
+int Kpdir = 1;
 int pickup = 0;
 int Ml = 0; //left motor
 int Mr = 0; //right motor
@@ -62,6 +63,7 @@ IPAddress ip2;
 IPAddress server(192,168,1,99); //udp ip address
 unsigned int localPort = 5005; //udp port
 WiFiUDP Udp;
+LSM303 compass;
 char recvBuffer[BUFSZ];
 
 void setup() {
@@ -69,19 +71,16 @@ void setup() {
   wifiSetup(); //setup wifi
   openPort(); //UDP set-up
   pinSetup(); //configure pins and interrupts
-  imuSetup();  //set-up IMU 
+  //imuSetup();  //set-up IMU 
 }
 
 void loop() {
   // put your main code here, to run repeatedly:
-  checkImu(); //Updates IMU data 
+  //Serial.println("In loop");
+  //checkImu(); //Updates IMU data 
   checkUDP(); //Updates UDP data
   setSpe(myRobot.Velocity); //Feedback for speed
   setDir(myRobot.Theta); //Feedback for theta
-  if (pickup == 1){ //check if robot was pickup or not
-    Ml = 0;
-    Mr = 0;
-  }
   setMotor(); //turns the motor at the right speed
 }
 
@@ -97,12 +96,15 @@ void wifiSetup(){
   ip2 = WiFi.localIP();
   Serial.print("IP Address: ");
   Serial.println(ip2);
+  Serial.println("WiFi set-up");
 }
 
 void openPort(){
   //UDP setup
   Udp.begin(localPort);
+  Serial.println("UDP set-up");
 }
+
 
 void pinSetup(){
   pinMode(motorRfow, OUTPUT);
@@ -113,10 +115,15 @@ void pinSetup(){
   pinMode(encoderL, INPUT);
   attachInterrupt(digitalPinToInterrupt(encoderR), encoderR_ISR, RISING);
   attachInterrupt(digitalPinToInterrupt(encoderL), encoderL_ISR, RISING);
+  Serial.println("Pin all set-up");
 }
 
 void imuSetup(){
   //IMU setup
+  Wire.begin();
+  compass.init();
+  compass.enableDefault();
+  Serial.println("IMU all set-up");
 }
 
 void encoderR_ISR(){
@@ -196,20 +203,23 @@ void encoderL_ISR(){
 }
 
 void checkImu(){
-  
+  compass.read();
+  float heading = compass.heading();
+  //Serial.println("Checking IMU");
 }
 
 void checkUDP(){
+  Serial.println("IN UDP");
   int packetSize = Udp.parsePacket(); //parse packet for UDP
     if (packetSize > 0) {
         // read the packet into recvBuffer
         int len = Udp.read(recvBuffer, BUFSZ); //read different packet from UDP packet
         if (len > 0) {
-            Serial.println("Contents:");
-            Serial.println(recvBuffer);
+            //Serial.println("Contents:");
+            //Serial.println(recvBuffer);
             memcpy(&myRobot, recvBuffer, sizeof(myRobot));
-            Serial.println(myRobot.Velocity);
-            Serial.println(myRobot.Theta);
+            //Serial.println(myRobot.Velocity);
+            //Serial.println(myRobot.Theta);
         }
         else {
             Serial.println("Read 0 bytes.");
@@ -222,18 +232,52 @@ int setSpe(double v){
   float(theta) = (float(count)*(0.5))*kg; //gets speed
   errorSpe = v - theta; //finds error
   vel = errorSpe*Kpspe; //finds velocity for the motors
+  //Serial.print("Theta is: ");
+  //Serial.println(vel);
+  //Serial.print("errorSpe is: ");
+  //Serial.println(vel);
+  //Serial.print("Velocity is: ");
+  //Serial.println(vel);
 }
 
 int setDir(double t){
   errorDir = t - phiGlobal; //finds error
   w = errorDir*Kpdir; //finds angluar speed
+  Serial.print("The desired angluar speed:  ");
+  Serial.println(t);
+  Serial.print("The phi:  ");
+  Serial.println(phi);
+  Serial.print("The phi Global:  ");
+  Serial.println(phiGlobal);
+  Serial.print("The angluar speed:  ");
+  Serial.println(w);
 }
 
 void setMotor(){
-   Mr = (((2*vel) + (w*L))/(2*r));  //motor speed right wheel
-   Ml = (((2*vel) - (w*L))/(2*r)); //motor speed left wheel
-   analogWrite(motorRfow,Mr);
-   analogWrite(motorRbac,0);
-   analogWrite(motorLfow,Ml);
-   analogWrite(motorLbac,0);
+  Mr = 9*(((2*vel) + (w*L))/(2*r));  //motor speed right wheel
+  Ml = 9*(((2*vel) - (w*L))/(2*r)); //motor speed left wheel
+  if (Ml > 255){
+    Ml = 255;
+  }
+  if (Mr > 255){
+    Mr = 255;
+  }
+  if (Ml < 0){
+    Ml = 0;
+  }
+  if (Mr < 0){
+    Mr = 0;
+  }
+  if (pickup == 1){ //check if robot was pickup or not
+     Ml = 0;
+     Mr = 0;
+  }
+  Serial.print("Right wheel :  ");
+  Serial.println(Mr);
+  Serial.print("Left wheel :  ");
+  Serial.println(Ml);
+  analogWrite(motorRfow,Mr);
+  analogWrite(motorRbac,0);
+  analogWrite(motorLfow,Ml);
+  analogWrite(motorLbac,0);
 }
