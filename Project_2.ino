@@ -38,9 +38,10 @@ float yGlobal = 0;
 float phiGlobal = 0;
 float deltaXp = 0; 
 float deltaYp = 0;
+float phiDir = 0;
+float head = 0;
 int cntR = 0; //tick for right wheel
 int cntL = 0; //tick for left wheel
-int count = 0; //average tick count
 float kg = 0.0133333; //gear ratio
 float azold = 0.94;
 char ssid[] = SECRET_SSID;        // your network SSID (name)
@@ -84,10 +85,10 @@ void loop() {
   //Serial.println("In loop");
   checkImu(); //Updates IMU data 
   checkUDP(); //Updates UDP data
+  setMotor(); //turns the motor at the right speed
   setMl(myRobot.Velocity); //Feedback for speed
   setMr(myRobot.Velocity); //Feedback for speed
   setDir(myRobot.Theta); //Feedback for theta
-  setMotor(); //turns the motor at the right speed
 }
 
 void wifiSetup(){
@@ -129,6 +130,8 @@ void imuSetup(){
   Wire.begin();
   compass.init();
   compass.enableDefault();
+  compass.m_min = (LSM303::vector<int16_t>){-6323, -4611, -5234};
+  compass.m_max = (LSM303::vector<int16_t>){+202, +2843, +3576};
   Serial.println("IMU all set-up");
 }
 
@@ -167,9 +170,9 @@ void encoderL_ISR(){
 void checkImu(){
   compass.read();
   float az = ((double)(compass.a.z)*0.061)/1000.0;
-  float heading = compass.heading();
+  head = compass.heading((LSM303::vector<int>){0, 0, -1});
   float Jz = (az-azold);
-  if (Jz >= 0.5){
+  if (Jz >= 0.6){
     pickup = 1;
     //Serial.println("Pickup");
   }
@@ -191,6 +194,8 @@ void checkUDP(){
               Ml = 0;
               Mr = 0;
               phiGlobal = 0;
+              xGlobal = 0;
+              yGlobal = 0;
               errorDir = 0;
               errorSpel = 0;
               errorSper = 0;
@@ -244,12 +249,13 @@ int setMr(double v2){
 }
 
 int setDir(double t){
-  errorDir = t - phiGlobal; //finds error
+  phiDir = 0.4*(float)phiGlobal + 0.6*(float)head;
+  errorDir = t - phiDir; //finds error
   w = errorDir*Kpdir; //finds angluar speed
   //Serial.print("The desired angluar speed:  ");
   //Serial.println(t);
   //Serial.print("The phi:  ");
-  //Serial.println(phi);
+  //Serial.println(phiDir);
   //Serial.print("The phi Global:  ");
   //Serial.println(phiGlobal);
   //Serial.print("The error is:  ");
