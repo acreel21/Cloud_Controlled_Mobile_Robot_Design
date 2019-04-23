@@ -15,11 +15,14 @@ sock.connect((UDP_IP, UDP_PORT))
 
 class Robot(Structure):
 	_fields_ = [("velocity", c_double),("theta", c_double),("mode", c_int)] #setting up c type struct
+	
+class Data(Structure):
+	_fields_ = [("X", c_double),("Y", c_double),("phi", c_double)]
 
 print("Welcome, the controls for the robot are:")
 print("q is to exit")
 print("r is to restart the robot")
-print("n is receive data back from robot")
+print("n is receive data back from the robot")
 print("Space bar is to stop")
 print("a is to servo 0 deg")
 print("s is to servo 90 deg")
@@ -47,16 +50,19 @@ while True:
 		t = 270
 		print("t is equal to: ")
 		print(t)
-	elif (b == 'r'): #restart check
+	if (b == 'r'): #restart check
 		sendRobot = Robot(0,0,1) #parse data
 		sock.send(sendRobot) #send parse data
-	elif (b == 'n'): #restart check
+	if (b == 'n'): #restart check
 		sendRobot = Robot(v,t,2) #parse data
 		sock.send(sendRobot) #send parse data
-	elif (b == ' '):
+		buff = sock.recv(sizeof(Data))
+		myData = Data.from_buffer_copy(buff)
+		print "X=%d, Y=%d, phi=%f" % (myData.X, myData.Y, myData.phi)
+	if (b == ' '):
 		sendRobot = Robot(0,0,0) #parse data
 		sock.send(sendRobot) #send parse data
-	elif (b == 'q'):
+	if (b == 'q'):
 		print("Exiting")
 		sys.exit()
 	else:
