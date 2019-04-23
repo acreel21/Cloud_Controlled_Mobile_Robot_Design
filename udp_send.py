@@ -19,6 +19,7 @@ class Robot(Structure):
 print("Welcome, the controls for the robot are:")
 print("q is to exit")
 print("r is to restart the robot")
+print("n is receive data back from robot")
 print("Space bar is to stop")
 print("a is to servo 0 deg")
 print("s is to servo 90 deg")
@@ -48,6 +49,9 @@ while True:
 		print(t)
 	elif (b == 'r'): #restart check
 		sendRobot = Robot(0,0,1) #parse data
+		sock.send(sendRobot) #send parse data
+	elif (b == 'n'): #restart check
+		sendRobot = Robot(v,t,2) #parse data
 		sock.send(sendRobot) #send parse data
 	elif (b == ' '):
 		sendRobot = Robot(0,0,0) #parse data

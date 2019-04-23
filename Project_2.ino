@@ -19,42 +19,47 @@ typedef struct Robot{
   int Mode;
 } Robot;
 
+typedef struct Data{
+  double X;
+  double Y;
+  double phi;
+} Data;
+
 int L = 90; //base length
 float r = 30; //radius of wheels
-float cl = 2*3.14*(L/2); //circumference
+float cl = 2*3.14*(L); //circumference
 float cr = 2*3.14*(r/2); //circumference
 float d = cr/(76*2);
 float phi = 90*(d/cl); //angle
-float phiGlobal = 0; 
-float xGlobal = 0; 
+float deltaX = (L/2)*sin(phi);
+float deltaY = (L/2)-(L/2)*cos(phi);
+float xGlobal = 0;
 float yGlobal = 0;
-float matr[4][4] = {{cos(phiGlobal), sin(phiGlobal), 0, 0}, {sin(phiGlobal), cos(phiGlobal), 0, 0}, {0, 0, 1, 0}, {0, 0, 0, 1}};
-float matl[4][4] = {{cos(phiGlobal), sin(phiGlobal), 0, 0}, {sin(phiGlobal), cos(phiGlobal), 0, 0}, {0, 0, 1, 0}, {0, 0, 0, 1}};
-float matTrg[4][4] = {{0, 0, 0, 0}, {0, 0, 0, 0}, {0, 0, 0, 0}, {0, 0, 0, 0}};
-float matTlg[4][4]  = {{0, 0, 0, 0}, {0, 0, 0, 0}, {0, 0, 0, 0}, {0, 0, 0, 0}};
-float matRotr[4][4] = {{cos(phi), -sin(phi), 0, 0}, {sin(phi), cos(phi), 0, (L/2)}, {0, 0, 1, 0}, {0, 0, 0, 1}}; //Matrix angle math for robot
-float matRotl[4][4] = {{cos(-phi), -sin(-phi), 0, 0}, {sin(-phi), cos(-phi), 0, (-L/2)}, {0, 0, 1, 0}, {0, 0, 0, 1}}; //Matrix angle math for robot
-float matPosr[4][4] = {{1, 0, 0, 0}, {0, 1, 0, (-L/2)}, {0, 0, 1, 0}, {0, 0, 0, 1}}; //Matrix position math for robot
-float matPosl[4][4] = {{1, 0, 0, 0}, {0, 1, 0, (L/2)}, {0, 0, 1, 0}, {0, 0, 0, 1}}; //Matrix position math for robot
-float temp[4][4] = {0};
-int i,j,k = 0;
+float phiGlobal = 0;
+float deltaXp = 0; 
+float deltaYp = 0;
 int cntR = 0; //tick for right wheel
 int cntL = 0; //tick for left wheel
 int count = 0; //average tick count
 float kg = 0.0133333; //gear ratio
+float azold = 0.94;
 char ssid[] = SECRET_SSID;        // your network SSID (name)
 char pass[] = SECRET_PASS;    // your network password (use for WPA, or use as key for WEP)
-int vel = 0;
+int vell = 0;
+int velr = 0;
 int w = 0;
 int errorDir = 0;
-int errorSpe = 0;
-int Kpspe = 4;
-int Kpdir = 1;
+int errorSper = 0;
+int errorSpel = 0;
+int Kpspe = 5;
+int Kpdir = 8;
 int pickup = 0;
 int Ml = 0; //left motor
 int Mr = 0; //right motor
-float theta = 0;
+float thetar = 0;
+float thetal = 0;
 Robot myRobot;
+Data myData;
 
 IPAddress ip(192, 168, 1, 99); //set-up static ip address
 IPAddress gate(192, 168, 0, 1);
@@ -71,15 +76,16 @@ void setup() {
   wifiSetup(); //setup wifi
   openPort(); //UDP set-up
   pinSetup(); //configure pins and interrupts
-  //imuSetup();  //set-up IMU 
+  imuSetup();  //set-up IMU 
 }
 
 void loop() {
   // put your main code here, to run repeatedly:
   //Serial.println("In loop");
-  //checkImu(); //Updates IMU data 
+  checkImu(); //Updates IMU data 
   checkUDP(); //Updates UDP data
-  setSpe(myRobot.Velocity); //Feedback for speed
+  setMl(myRobot.Velocity); //Feedback for speed
+  setMr(myRobot.Velocity); //Feedback for speed
   setDir(myRobot.Theta); //Feedback for theta
   setMotor(); //turns the motor at the right speed
 }
@@ -129,32 +135,10 @@ void imuSetup(){
 void encoderR_ISR(){
   cntR += 1;
   phiGlobal += phi;
-  for(i = 0; i < 4; i++){
-    for(j = 0; j < 4; j++){
-      for(k = 0; k < 4; k++){
-        temp[i][j] += matRotr[i][k]*matPosr[k][j];
-      }
-    }
-  }
-
-  for(i = 0; i < 4; i++){
-    for(j = 0; j < 4; j++){
-      for(k = 0; k < 4; k++){
-        matTrg[i][j] += matr[i][k]*temp[k][j];
-      }
-    }
-  }
-
-  for(i = 0; i < 4; i++){
-    for(j = 0; j < 4; j++){
-       temp[i][j] = 0;
-    }
-  }
-
-  matr[0][0] = cos(phiGlobal);
-  matr[0][1] = sin(phiGlobal);
-  matr[1][0] = sin(phiGlobal);
-  matr[1][1] = cos(phiGlobal);
+  deltaXp = ((deltaX*cos(phiGlobal))+deltaY*sin(phiGlobal));
+  deltaYp = ((deltaX*sin(phiGlobal))+deltaY*cos(phiGlobal));
+  xGlobal += deltaXp;
+  yGlobal += deltaYp;
   
   //Serial.print("X: ");
   //Serial.println(matTrg[0][3]);
@@ -167,32 +151,10 @@ void encoderR_ISR(){
 void encoderL_ISR(){
   cntL += 1;
   phiGlobal -= phi;
-  for(i = 0; i < 4; i++){
-    for(j = 0; j < 4; j++){
-      for(k = 0; k < 4; k++){
-        temp[i][j] += matRotl[i][k]*matPosl[k][j];
-      }
-    }
-  }
-
-  for(i = 0; i < 4; i++){
-    for(j = 0; j < 4; j++){
-      for(k = 0; k < 4; k++){
-        matTlg[i][j] += matl[i][k]*temp[k][j];
-      }
-    }
-  }
-
-  for(i = 0; i < 4; i++){
-    for(j = 0; j < 4; j++){
-       temp[i][j] = 0;
-    }
-  }
-
-  matl[0][0] = cos(phiGlobal);
-  matl[0][1] = sin(phiGlobal);
-  matl[1][0] = sin(phiGlobal);
-  matl[1][1] = cos(phiGlobal);
+  deltaXp = ((deltaX*cos(phiGlobal))+deltaY*sin(phiGlobal));
+  deltaYp = ((deltaX*sin(phiGlobal))+deltaY*cos(phiGlobal));
+  xGlobal += deltaXp;
+  yGlobal += deltaYp;
   
   //Serial.print("X: ");
   //Serial.println(matTrg[0][3]);
@@ -204,12 +166,18 @@ void encoderL_ISR(){
 
 void checkImu(){
   compass.read();
+  float az = ((double)(compass.a.z)*0.061)/1000.0;
   float heading = compass.heading();
+  float Jz = (az-azold);
+  if (Jz >= 0.5){
+    pickup = 1;
+    //Serial.println("Pickup");
+  }
   //Serial.println("Checking IMU");
 }
 
 void checkUDP(){
-  Serial.println("IN UDP");
+  //Serial.println("IN UDP");
   int packetSize = Udp.parsePacket(); //parse packet for UDP
     if (packetSize > 0) {
         // read the packet into recvBuffer
@@ -218,8 +186,28 @@ void checkUDP(){
             //Serial.println("Contents:");
             //Serial.println(recvBuffer);
             memcpy(&myRobot, recvBuffer, sizeof(myRobot));
-            //Serial.println(myRobot.Velocity);
-            //Serial.println(myRobot.Theta);
+            if (myRobot.Mode == 1){
+              pickup = 0;
+              Ml = 0;
+              Mr = 0;
+              phiGlobal = 0;
+              errorDir = 0;
+              errorSpel = 0;
+              errorSper = 0;
+            }
+            else if (myRobot.Mode == 2){
+              Serial.println("Mode 2");
+              myData.X = xGlobal;
+              myData.Y = yGlobal;
+              myData.phi = phiGlobal;
+              Udp.beginPacket(Udp.remoteIP(), Udp.remotePort());
+              char txBuffer[128] = { 0 };
+              memcpy(txBuffer, &myData, sizeof(Data));
+              Udp.write(txBuffer, sizeof(Data));
+              Udp.endPacket();
+            }
+            Serial.println(myRobot.Velocity);
+            Serial.println(myRobot.Theta);
         }
         else {
             Serial.println("Read 0 bytes.");
@@ -227,35 +215,52 @@ void checkUDP(){
     }
 }
 
-int setSpe(double v){
-  count = (cntR + cntL)/2; //average ticks together
-  float(theta) = (float(count)*(0.5))*kg; //gets speed
-  errorSpe = v - theta; //finds error
-  vel = errorSpe*Kpspe; //finds velocity for the motors
+int setMl(double v1){
+  float(thetal) = (float(cntL)*(0.5))*kg; //gets speed
+  errorSpel = v1 - thetal; //finds error
+  vell = errorSpel*Kpspe; //finds velocity for the motors
+  //Serial.print("V1 is: ");
+  //Serial.println(v1);
   //Serial.print("Theta is: ");
-  //Serial.println(vel);
+  //Serial.println(thetal);
+  //Serial.print("errorSpeL is: ");
+  //Serial.println(errorSpel);
+  //Serial.print("Velocity in set M1 is: ");
+  //Serial.println(vell);
+  cntL=0;
+}
+
+int setMr(double v2){
+  float(thetar) = (float(cntR)*(0.5))*kg; //gets speed
+  errorSper = v2 - thetar; //finds error
+  velr = errorSper*Kpspe; //finds velocity for the motors
+  //Serial.print("Theta right is: ");
+  //Serial.println(thetar);
   //Serial.print("errorSpe is: ");
-  //Serial.println(vel);
-  //Serial.print("Velocity is: ");
-  //Serial.println(vel);
+  //Serial.println(errorSper);
+  //Serial.print("Velocity right is: ");
+  //Serial.println(velr);
+  cntR=0;
 }
 
 int setDir(double t){
   errorDir = t - phiGlobal; //finds error
   w = errorDir*Kpdir; //finds angluar speed
-  Serial.print("The desired angluar speed:  ");
-  Serial.println(t);
-  Serial.print("The phi:  ");
-  Serial.println(phi);
-  Serial.print("The phi Global:  ");
-  Serial.println(phiGlobal);
-  Serial.print("The angluar speed:  ");
-  Serial.println(w);
+  //Serial.print("The desired angluar speed:  ");
+  //Serial.println(t);
+  //Serial.print("The phi:  ");
+  //Serial.println(phi);
+  //Serial.print("The phi Global:  ");
+  //Serial.println(phiGlobal);
+  //Serial.print("The error is:  ");
+  //Serial.println(errorDir);
+  //Serial.print("The angluar speed:  ");
+  //Serial.println(w);
 }
 
 void setMotor(){
-  Mr = 9*(((2*vel) + (w*L))/(2*r));  //motor speed right wheel
-  Ml = 9*(((2*vel) - (w*L))/(2*r)); //motor speed left wheel
+  Mr = 9*(((2*velr) + (w*L))/(2*r));  //motor speed right wheel
+  Ml = 9*(((2*vell) - (w*L))/(2*r)); //motor speed left wheel
   if (Ml > 255){
     Ml = 255;
   }
@@ -272,10 +277,10 @@ void setMotor(){
      Ml = 0;
      Mr = 0;
   }
-  Serial.print("Right wheel :  ");
-  Serial.println(Mr);
-  Serial.print("Left wheel :  ");
-  Serial.println(Ml);
+  //Serial.print("Right wheel :  ");
+  //Serial.println(Mr);
+  //Serial.print("Left wheel :  ");
+  //Serial.println(Ml);
   analogWrite(motorRfow,Mr);
   analogWrite(motorRbac,0);
   analogWrite(motorLfow,Ml);
