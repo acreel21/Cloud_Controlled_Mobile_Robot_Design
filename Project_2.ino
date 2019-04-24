@@ -52,9 +52,10 @@ int w = 0;
 int errorDir = 0;
 int errorSper = 0;
 int errorSpel = 0;
-int Kpspe = 5;
-int Kpdir = 8;
+int Kpspe = 25;
+int Kpdir = 4;
 int pickup = 0;
+int i = 0;
 int Ml = 0; //left motor
 int Mr = 0; //right motor
 float thetar = 0;
@@ -130,8 +131,8 @@ void imuSetup(){
   Wire.begin();
   compass.init();
   compass.enableDefault();
-  compass.m_min = (LSM303::vector<int16_t>){-6323, -4611, -5234};
-  compass.m_max = (LSM303::vector<int16_t>){+202, +2843, +3576};
+  compass.m_min = (LSM303::vector<int16_t>){-5867, -4073, -4321};
+  compass.m_max = (LSM303::vector<int16_t>){+935, +2096, +1928};
   Serial.println("IMU all set-up");
 }
 
@@ -171,6 +172,7 @@ void checkImu(){
   compass.read();
   float az = ((double)(compass.a.z)*0.061)/1000.0;
   head = compass.heading((LSM303::vector<int>){0, 0, -1});
+  Serial.println(compass.heading((LSM303::vector<int>){0, 0, -1}));
   float Jz = (az-azold);
   if (Jz >= 0.6){
     pickup = 1;
@@ -186,13 +188,11 @@ void checkUDP(){
         // read the packet into recvBuffer
         int len = Udp.read(recvBuffer, BUFSZ); //read different packet from UDP packet
         if (len > 0) {
-            //Serial.println("Contents:");
+            Serial.println("Contents:");
             //Serial.println(recvBuffer);
             memcpy(&myRobot, recvBuffer, sizeof(myRobot));
             if (myRobot.Mode == 1){
               pickup = 0;
-              Ml = 0;
-              Mr = 0;
               phiGlobal = 0;
               xGlobal = 0;
               yGlobal = 0;
@@ -204,7 +204,7 @@ void checkUDP(){
               Serial.println("Mode 2");
               myData.X = xGlobal;
               myData.Y = yGlobal;
-              myData.phi = phiGlobal;
+              myData.phi = head;
               Udp.beginPacket(Udp.remoteIP(), Udp.remotePort());
               char txBuffer[128] = { 0 };
               memcpy(txBuffer, &myData, sizeof(Data));
@@ -249,9 +249,15 @@ int setMr(double v2){
 }
 
 int setDir(double t){
-  phiDir = 0.4*(float)phiGlobal + 0.6*(float)head;
+  i++;
+  phiDir = 0.3*(float)phiGlobal + 0.7*(float)head;
   errorDir = t - phiDir; //finds error
   w = errorDir*Kpdir; //finds angluar speed
+  if (i > 10000){
+    phiDir = 0;
+    Serial.println("restart");
+    i = 0;
+  }
   //Serial.print("The desired angluar speed:  ");
   //Serial.println(t);
   //Serial.print("The phi:  ");
@@ -265,8 +271,18 @@ int setDir(double t){
 }
 
 void setMotor(){
-  Mr = 9*(((2*velr) + (w*L))/(2*r));  //motor speed right wheel
-  Ml = 9*(((2*vell) - (w*L))/(2*r)); //motor speed left wheel
+  Mr = (((2*velr) + (w*L))/(2*r));  //motor speed right wheel
+  Ml = (((2*vell) - (w*L))/(2*r)); //motor speed left wheel
+  //Serial.print("Velocity left is: ");
+  //Serial.println(vell);
+  //Serial.print("Velocity right is: ");
+  //Serial.println(velr);
+  //Serial.print("The angluar speed:  ");
+  //Serial.println(w);
+  //Serial.print("Right wheel :  ");
+  //Serial.println(Mr);
+  //Serial.print("Left wheel :  ");
+  //Serial.println(Ml);
   if (Ml > 255){
     Ml = 255;
   }
@@ -279,14 +295,10 @@ void setMotor(){
   if (Mr < 0){
     Mr = 0;
   }
-  if (pickup == 1){ //check if robot was pickup or not
+  if (pickup == 1 || myRobot.Mode == 3 || myRobot.Mode == 1){ //check if robot was pickup or not
      Ml = 0;
      Mr = 0;
   }
-  //Serial.print("Right wheel :  ");
-  //Serial.println(Mr);
-  //Serial.print("Left wheel :  ");
-  //Serial.println(Ml);
   analogWrite(motorRfow,Mr);
   analogWrite(motorRbac,0);
   analogWrite(motorLfow,Ml);
