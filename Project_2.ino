@@ -26,11 +26,11 @@ typedef struct Data{
 } Data;
 
 int L = 90; //base length
-float r = 30; //radius of wheels
+float r = 15; //radius of wheels
 float cl = 2*3.14*(L); //circumference
-float cr = 2*3.14*(r/2); //circumference
-float d = cr/(76*2);
-float phi = 90*(d/cl); //angle
+float cr = 2*3.14*(r); //circumference
+float d = cr/(76*4);
+float phi = (360*(d/cl))*((2*3.14)/360); //angle
 float deltaX = (L/2)*sin(phi);
 float deltaY = (L/2)-(L/2)*cos(phi);
 float xGlobal = 0;
@@ -53,9 +53,8 @@ int errorDir = 0;
 int errorSper = 0;
 int errorSpel = 0;
 int Kpspe = 25;
-int Kpdir = 4;
+int Kpdir = 2;
 int pickup = 0;
-int i = 0;
 int Ml = 0; //left motor
 int Mr = 0; //right motor
 float thetar = 0;
@@ -89,7 +88,7 @@ void loop() {
   setMotor(); //turns the motor at the right speed
   setMl(myRobot.Velocity); //Feedback for speed
   setMr(myRobot.Velocity); //Feedback for speed
-  setDir(myRobot.Theta); //Feedback for theta
+  setDir(myRobot.Theta);
 }
 
 void wifiSetup(){
@@ -119,10 +118,10 @@ void pinSetup(){
   pinMode(motorRbac, OUTPUT);
   pinMode(motorLfow, OUTPUT);
   pinMode(motorLbac, OUTPUT);
-  pinMode(encoderR, INPUT);
-  pinMode(encoderL, INPUT);
-  attachInterrupt(digitalPinToInterrupt(encoderR), encoderR_ISR, RISING);
-  attachInterrupt(digitalPinToInterrupt(encoderL), encoderL_ISR, RISING);
+  pinMode(encoderR, INPUT_PULLUP);
+  pinMode(encoderL, INPUT_PULLUP);
+  attachInterrupt(digitalPinToInterrupt(encoderR), encoderR_ISR, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(encoderL), encoderL_ISR, CHANGE);
   Serial.println("Pin all set-up");
 }
 
@@ -131,48 +130,58 @@ void imuSetup(){
   Wire.begin();
   compass.init();
   compass.enableDefault();
-  compass.m_min = (LSM303::vector<int16_t>){-5867, -4073, -4321};
-  compass.m_max = (LSM303::vector<int16_t>){+935, +2096, +1928};
+  compass.m_min = (LSM303::vector<int16_t>){-5779, -4191, -4522};
+  compass.m_max = (LSM303::vector<int16_t>){+562, +1726, +1789};
   Serial.println("IMU all set-up");
 }
 
 void encoderR_ISR(){
-  cntR += 1;
+  cntR++;
   phiGlobal += phi;
   deltaXp = ((deltaX*cos(phiGlobal))+deltaY*sin(phiGlobal));
   deltaYp = ((deltaX*sin(phiGlobal))+deltaY*cos(phiGlobal));
   xGlobal += deltaXp;
   yGlobal += deltaYp;
   
-  //Serial.print("X: ");
-  //Serial.println(matTrg[0][3]);
+  //Serial.print("XR: ");
+  //Serial.println(xGlobal);
   //Serial.print("Y: ");
-  //Serial.println(matTrg[1][3]);
+  //Serial.println(yGlobal);
   //Serial.print("ThetaZ: ");
-  //Serial.println(phiGlobal);
+  //Serial.println(phiGlobal*(360/(2*3.14)));
 }
 
 void encoderL_ISR(){
-  cntL += 1;
+  cntL++;
   phiGlobal -= phi;
   deltaXp = ((deltaX*cos(phiGlobal))+deltaY*sin(phiGlobal));
   deltaYp = ((deltaX*sin(phiGlobal))+deltaY*cos(phiGlobal));
   xGlobal += deltaXp;
   yGlobal += deltaYp;
   
-  //Serial.print("X: ");
-  //Serial.println(matTrg[0][3]);
+  //Serial.print("XL: ");
+  //Serial.println(xGlobal);
   //Serial.print("Y: ");
-  //Serial.println(matTrg[1][3]);
+  //Serial.println(yGlobal);
   //Serial.print("ThetaZ: ");
-  //Serial.println(phiGlobal);
+  //Serial.println(phiGlobal*(360/(2*3.14)));
 }
 
 void checkImu(){
   compass.read();
   float az = ((double)(compass.a.z)*0.061)/1000.0;
   head = compass.heading((LSM303::vector<int>){0, 0, -1});
-  Serial.println(compass.heading((LSM303::vector<int>){0, 0, -1}));
+  if (head > 110 && head < 190){
+    head += 35;
+  }
+  if (head > 190 && head < 300){
+    head += 50;
+  }
+  if (head > 300){
+    head = abs(head - 360);
+  }
+  //Serial.print("The heading in the IMU:");
+  //Serial.println(head);
   float Jz = (az-azold);
   if (Jz >= 0.6){
     pickup = 1;
@@ -224,7 +233,7 @@ int setMl(double v1){
   float(thetal) = (float(cntL)*(0.5))*kg; //gets speed
   errorSpel = v1 - thetal; //finds error
   vell = errorSpel*Kpspe; //finds velocity for the motors
-  //Serial.print("V1 is: ");
+  //Serial.print("Desired Velocity is: ");
   //Serial.println(v1);
   //Serial.print("Theta is: ");
   //Serial.println(thetal);
@@ -239,6 +248,8 @@ int setMr(double v2){
   float(thetar) = (float(cntR)*(0.5))*kg; //gets speed
   errorSper = v2 - thetar; //finds error
   velr = errorSper*Kpspe; //finds velocity for the motors
+  //Serial.print("Desired Velocity is: ");
+  //Serial.println(v2);
   //Serial.print("Theta right is: ");
   //Serial.println(thetar);
   //Serial.print("errorSpe is: ");
@@ -249,31 +260,27 @@ int setMr(double v2){
 }
 
 int setDir(double t){
-  i++;
-  phiDir = 0.3*(float)phiGlobal + 0.7*(float)head;
+  phiDir = (float)phiGlobal*(360/(2*3.14));//0.1*(float)phiGlobal*(360/(2*3.14))+0.9*(int)head;
   errorDir = t - phiDir; //finds error
   w = errorDir*Kpdir; //finds angluar speed
-  if (i > 10000){
-    phiDir = 0;
-    Serial.println("restart");
-    i = 0;
-  }
   //Serial.print("The desired angluar speed:  ");
   //Serial.println(t);
-  //Serial.print("The phi:  ");
-  //Serial.println(phiDir);
+  //Serial.print("The heading:  ");
+  //Serial.println(head);
+  Serial.print("The phi:  ");
+  Serial.println(phiDir);
   //Serial.print("The phi Global:  ");
   //Serial.println(phiGlobal);
-  //Serial.print("The error is:  ");
-  //Serial.println(errorDir);
-  //Serial.print("The angluar speed:  ");
-  //Serial.println(w);
+  Serial.print("The error is:  ");
+  Serial.println(errorDir);
+  Serial.print("The angluar speed:  ");
+  Serial.println(w);
 }
 
 void setMotor(){
   Mr = (((2*velr) + (w*L))/(2*r));  //motor speed right wheel
   Ml = (((2*vell) - (w*L))/(2*r)); //motor speed left wheel
-  //Serial.print("Velocity left is: ");
+  //Serial.print("Velocity in set M1 is: ");
   //Serial.println(vell);
   //Serial.print("Velocity right is: ");
   //Serial.println(velr);
